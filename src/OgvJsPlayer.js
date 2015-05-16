@@ -693,9 +693,11 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 					droppedAudio = audioState.starvedCycles;
 				}
 
+				var preferredBufferDuration = audioFeeder.preferredBufferDuration * 1000;
+
 				// Drive on the audio clock!
 				var fudgeDelta = 0.1,
-					readyForAudio = audioState.bufferedDuration <= (audioFeeder.cycleDuration * 2),
+					readyForAudio = audioBufferedDuration <= preferredBufferDuration,
 					frameDelay = (frameEndTimestamp - audioPlaybackPosition) * 1000,
 					readyForFrame = (frameDelay <= fudgeDelta);
 
@@ -728,13 +730,10 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 				}
 			
 				// Check in when all audio runs out
-				var bufferDuration = audioFeeder.cycleDuration * 1000;
 				var nextDelays = [];
-				if (audioBufferedDuration <= bufferDuration * 2) {
-					// NEED MOAR BUFFERS
-				} else {
+				if (audioBufferedDuration > preferredBufferDuration) {
 					// Check in when the audio buffer runs low again...
-					nextDelays.push(bufferDuration / 2);
+					nextDelays.push(preferredBufferDuration / 2);
 					
 					if (codec.hasVideo) {
 						// Check in when the next frame is due
