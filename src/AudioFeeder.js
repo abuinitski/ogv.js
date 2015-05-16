@@ -132,10 +132,9 @@
 
       if (!engine) {
         if (AudioFeeder.Web.isAvailable()) {
-          var self = this;
           engine = new AudioFeeder.Web(inputChannels, inputSampleRate, onEngineDataRequest);
         } else {
-          throw new Error('dummy feeder engine not implemented');
+          engine = new AudioFeeder.Dummy(inputChannels, inputSampleRate, onEngineDataRequest);
         }
       }
 

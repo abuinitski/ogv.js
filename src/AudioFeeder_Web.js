@@ -237,9 +237,7 @@
 
       var data = dataRequestCallback(inputSamplesCountForOutputBufferSize());
 
-      console.log('omnom?');
       if (!!data) {
-        console.log('nom!');
         data = resampleData(data, inputSampleRate, outputSampleRate, outputChannels);
         if (muted) {
           zeroOutput(event.outputBuffer);
@@ -314,12 +312,6 @@
       },
       set: function(isMuted) {
         muted = isMuted;
-      }
-    });
-
-    Object.defineProperty(this, 'outputSampleRate', {
-      get: function() {
-        return outputSampleRate;
       }
     });
 

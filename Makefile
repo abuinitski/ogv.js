@@ -90,7 +90,10 @@ build/FrameSink.js : src/FrameSink.js.in src/YCbCr.js
 build/WebGLFrameSink.js : src/WebGLFrameSink.js.in build/YCbCr-shaders.h
 	 cpp -E -w -P -CC -nostdinc -Ibuild src/WebGLFrameSink.js.in > build/WebGLFrameSink.js
 
-build/ogv.js : src/ogv.js.in src/StreamFile.js src/AudioFeeder.js src/AudioFeeder_Web.js build/FrameSink.js build/WebGLFrameSink.js src/Bisector.js src/OgvJsPlayer.js \
+build/ogv.js : src/ogv.js.in src/StreamFile.js src/Bisector.js \
+							 src/AudioFeeder.js src/AudioFeeder_Web.js src/AudioFeeder_Dummy.js \
+							 build/FrameSink.js build/WebGLFrameSink.js \
+							 src/OgvJsPlayer.js \
                build/ogv-codec.js \
                build/ogv-codec.js.gz
 	cpp -E -w -P -CC -nostdinc -Ibuild src/ogv.js.in > build/ogv.js
