@@ -80,5 +80,11 @@
       value: 0.02,
       writable: false
     });
+
+    Object.defineProperty(this, 'started', {
+      get: function() {
+        return !!playTimer;
+      }
+    });
   };
 })();

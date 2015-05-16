@@ -13,41 +13,56 @@
 
 var player = null;
 var paused = false;
+var muted = false;
 //var sampleFile = 'https://upload.wikimedia.org/wikipedia/commons/3/3f/Jarry_-_M%C3%A9tro_de_Montr%C3%A9al_%28640%C3%97360%29.ogv';
 var sampleFile = 'media/curiosity.ogv?x';
 
 function play(src) {
-	if(player) {
+	if (player) {
 		player.stop();
 		player.parentNode.removeChild(player);
 	}
+
 	player = new OgvJsPlayer({
 		base: 'lib'
 	});
+	player.muted = muted;
 	//player = new OgvSwfPlayer();
 	//player = document.createElement('video');
 	player.src = src;
 	document.getElementById("videoarea").appendChild(player);
-	/*
-	player.load();
-	player.onloadedmetadata = function() {
-		player.play();
-	}
-	*/
 	player.play();
-	
 }
 
-function pause() {
-	if(player) {
-		if(!paused) {
+function updateButtons() {
+	document.getElementById('pauseButton').innerText =
+		paused ? 'Resume' : 'Pause';
+
+	document.getElementById('muteButton').innerText =
+		muted ? 'Sound (+)' : 'Sound (-)';
+}
+
+function togglePause() {
+	if (player) {
+		if (!paused) {
 			player.pause();
 			paused = true;
 		} else {
 			player.play();
 			paused = false;
 		}
+	} else {
+		paused = false;
 	}
+	updateButtons();
+}
+
+function toggleMute() {
+	muted = !muted;
+	if (player) {
+		player.muted = muted;
+	}
+	updateButtons();
 }
 
 function switchmedia(src) {
@@ -74,7 +89,9 @@ function switchmedia(src) {
 	<option value="media/pixel_aspect_ratio.ogg">Theora Test suite pixel_aspect_ratio.ogg</option>
 </select>
 <div>
-<button onclick="play(sampleFile);">Play</button><button onclick="pause();">Pause/Unpause</button>
+<button onclick="play(sampleFile);">Play</button>
+<button onclick="togglePause();" id="pauseButton">Pause</button>
+<button onclick="toggleMute();" id="muteButton">Sound (-)</button>
 </div>
 
 </body></html>

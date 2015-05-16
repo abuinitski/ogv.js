@@ -1,14 +1,4 @@
 (function() {
-  /* TODO:
-  * On iOS, when audio context is created, and this happens not as a result
-  *  of a user action (i.e. inside onclick handler), this context is forever
-  *  disfuntional, not consuming samples, and not reporting time updates.
-  * As a workaround we delay context creation if feeder is initially muted,
-  *  simulating samples consumption until sound is enabled, hopefully as a
-  *  result of a tap somewhere.
-  */
-
-
   /**
    * @param {number} channels number of output channels
    * @return {Float32Array[]}
@@ -43,10 +33,47 @@
 
     /**
      * Underlying engine implementation for actually playing the sound.
-     * Playback should start as soon as it's created, and stop after 'close'.
+     *
+     * On iOS, when audio context is created, and this happens not as a result
+     *  of a user action (i.e. inside onclick handler), this context is forever
+     *  disfuntional, not consuming samples, and not reporting time updates.
+     *
+     * As a workaround we delay context creation if feeder is initially muted,
+     *  simulating samples consumption until sound is enabled, hopefully as a
+     *  result of a tap somewhere.
+     *
      * @type {AudioFeeder.Web|AudioFeeder.Dummy|null}
      */
     var engine = null;
+
+    /**
+     * A number of seconds to correct engine internal timing, used when switching engines
+     * @see engine
+     */
+    var engineTimestampCorrection = 0;
+
+    /**
+     * @see engine
+     */
+    function changeEngineOnUnmute() {
+      var engineIsDummy = !!engine && engine instanceof AudioFeeder.Dummy,
+          webEngineAvailable = AudioFeeder.Web.isAvailable(),
+          engineWasStarted = engine.started;
+
+      if (engineIsDummy && webEngineAvailable) {
+        var oldTimestamp = engine.getPlaybackState().playbackPosition;
+
+        engine.stop();
+        engine = new AudioFeeder.Web(inputChannels, inputSampleRate, onEngineDataRequest);
+        var newTimestamp = engine.getPlaybackState().playbackPosition;
+
+        engineTimestampCorrection += (oldTimestamp - newTimestamp);
+
+        if (engineWasStarted) {
+          engine.start();
+        }
+      }
+    }
 
     this.init = function(channels, sampleRate) {
       if (initialized) {
@@ -122,6 +149,8 @@
         state.bufferedDuration += inputBufferLength / (inputSampleRate || 44100);
       }
 
+      state.playbackPosition += engineTimestampCorrection;
+
       return state;
     };
 
@@ -131,18 +160,22 @@
       }
 
       if (!engine) {
-        if (AudioFeeder.Web.isAvailable()) {
+        if (muted) {
+          // don't run into AudioContext if initializing muted, see iOS notes above
+          engine = new AudioFeeder.Dummy(inputChannels, inputSampleRate, onEngineDataRequest);
+        } else if (AudioFeeder.Web.isAvailable()) {
           engine = new AudioFeeder.Web(inputChannels, inputSampleRate, onEngineDataRequest);
         } else {
           engine = new AudioFeeder.Dummy(inputChannels, inputSampleRate, onEngineDataRequest);
         }
+        engine.muted = muted;
       }
 
       engine.start();
     };
 
     this.stop = function() {
-      if (!!engine) {
+      if (!!engine && engine.started) {
         engine.stop();
       }
     };
@@ -172,7 +205,13 @@
       },
       set: function(newMuted) {
         if (muted != newMuted) {
-          // TODO: if audiocontext was not yet created, do it
+          if (!!engine) {
+            if (muted) {
+              changeEngineOnUnmute();
+            }
+            engine.muted = newMuted;
+          }
+
           muted = newMuted;
         }
       }

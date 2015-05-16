@@ -321,6 +321,12 @@
       }
     });
 
+    Object.defineProperty(this, 'started', {
+      get: function() {
+        return started;
+      }
+    });
+
     init();
   };
 
