@@ -32,6 +32,9 @@ function play(src) {
 	player.src = src;
 	document.getElementById("videoarea").appendChild(player);
 	player.play();
+
+	paused = false;
+	updateButtons();
 }
 
 function updateButtons() {
