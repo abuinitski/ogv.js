@@ -7,8 +7,8 @@
 // -- StreamFile.js
 #include "StreamFile.js"
 
-// -- AudioFeeder.js
-#include "AudioFeeder.js"
+// -- WebAudioFeeder.js
+#include "WebAudioFeeder.js"
 
 // -- FrameSink.js
 #include "FrameSink.js"

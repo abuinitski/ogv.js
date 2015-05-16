@@ -98,9 +98,7 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 		initialAudioOffset = 0.0;
 	function initAudioFeeder() {
 		audioFeeder = new AudioFeeder( audioOptions );
-		if (muted) {
-			audioFeeder.mute();
-		}
+		audioFeeder.muted = muted;
 		audioFeeder.onstarved = function() {
 			// If we're in a background tab, timers may be throttled.
 			// When audio buffers run out, go decode some more stuff.
@@ -691,13 +689,13 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 				if (!audioState) {
 					audioState = audioFeeder.getPlaybackState();
 					audioPlaybackPosition = getAudioTime(audioState);
-					audioBufferedDuration = (audioState.samplesQueued / audioFeeder.targetRate) * 1000;
-					droppedAudio = audioState.dropped;
+					audioBufferedDuration = audioState.bufferedDuration * 1000;
+					droppedAudio = audioState.starvedCycles;
 				}
 
 				// Drive on the audio clock!
 				var fudgeDelta = 0.1,
-					readyForAudio = audioState.samplesQueued <= (audioFeeder.bufferSize * 2),
+					readyForAudio = audioState.bufferedDuration <= (audioFeeder.cycleDuration * 2),
 					frameDelay = (frameEndTimestamp - audioPlaybackPosition) * 1000,
 					readyForFrame = (frameDelay <= fudgeDelta);
 
@@ -730,7 +728,7 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 				}
 			
 				// Check in when all audio runs out
-				var bufferDuration = (audioFeeder.bufferSize / audioFeeder.targetRate) * 1000;
+				var bufferDuration = audioFeeder.cycleDuration * 1000;
 				var nextDelays = [];
 				if (audioBufferedDuration <= bufferDuration * 2) {
 					// NEED MOAR BUFFERS
@@ -1026,10 +1024,6 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 	 * HTMLMediaElement play method
 	 */
 	self.play = function() {
-		if (!audioOptions.audioContext) {
-			OgvJsPlayer.initSharedAudioContext();
-		}
-		
 		if (!stream) {
 			self.load();
 		}
@@ -1226,11 +1220,7 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 		set: function setMuted(val) {
 			muted = val;
 			if (audioFeeder) {
-				if (muted) {
-					audioFeeder.mute();
-				} else {
-					audioFeeder.unmute();
-				}
+				audioFeeder.muted = muted;
 			}
 		}
 	});
@@ -1372,10 +1362,6 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 	
 	return self;
 }
-
-OgvJsPlayer.initSharedAudioContext = function() {
-	AudioFeeder.initSharedAudioContext();
-};
 
 OgvJsPlayer.loadingNode = null,
 OgvJsPlayer.loadingCallbacks = [];
