@@ -1,13 +1,15 @@
 (function() {
 
   var timestamp = (function() {
-    if (window.performance === undefined || window.performance.now === undefined) {
-  		return Date.now;
-  	} else {
-      return function() {
-        return window.performance.now() / 1000;
-      };
-  	}
+    var method = Date.now;
+
+    if (window.performance !== undefined && window.performance.now !== undefined) {
+  		method = window.performance.now.bind(window.performance);
+    }
+
+    return function() {
+      return method() / 1000;
+    };
   })();
 
   /**
