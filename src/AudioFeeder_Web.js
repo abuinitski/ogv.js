@@ -181,7 +181,7 @@
           currentPlaybackTime = (event.timeStamp - Date.now()) / 1000 + audioContext.currentTime;
 
         } else {
-          console.error('Unrecognized AudioProgressEvent format, no playbackTime or timeStamp');
+          console.log(new Error('Unrecognized AudioProgressEvent format, no playbackTime or timeStamp'));
           currentPlaybackTime = audioContext.currentTime;
         }
 
