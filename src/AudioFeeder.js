@@ -9,7 +9,7 @@
       buffer[channel] = [];
     }
     return buffer;
-  };
+  }
 
   window.AudioFeeder = function() {
     var initialized = false;

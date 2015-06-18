@@ -13,6 +13,39 @@
  * @license MIT-style
  */
 function StreamFile(options) {
+	function sliceBuffer(buffer, from, to) {
+		function clamp(val, length) {
+			val = (val|0) || 0;
+
+			if (val < 0) {
+				return Math.max(val + length, 0);
+			}
+
+			return Math.min(val, length);
+		}
+
+		var length = buffer.byteLength;
+		var begin = clamp(from, length);
+		var end = length;
+
+		if (to !== undefined) {
+			end = clamp(to, length);
+		}
+
+		if (begin > end) {
+			return new ArrayBuffer(0);
+		}
+
+		var num = end - begin;
+		var target = new ArrayBuffer(num);
+		var targetArray = new Uint8Array(target);
+
+		var sourceArray = new Uint8Array(buffer, begin, num);
+		targetArray.set(sourceArray);
+
+		return target;
+	}
+
 	var self = this,
 		url = options.url,
 		started = false,
@@ -274,8 +307,8 @@ function StreamFile(options) {
 					stuff(nextBuffer);
 				} else {
 					// Split the buffer and requeue the rest
-					var croppedBuffer = nextBuffer.slice(0, needBytes),
-						remainderBuffer = nextBuffer.slice(needBytes);
+					var croppedBuffer = sliceBuffer(nextBuffer, 0, needBytes),
+						remainderBuffer = sliceBuffer(nextBuffer, needBytes);
 					buffers.unshift(remainderBuffer);
 					stuff(croppedBuffer);
 					break;
@@ -284,7 +317,7 @@ function StreamFile(options) {
 			
 			bytesRead += byteLength;
 			bufferPosition += byteLength;
-			return bufferOut.slice(0, byteLength);
+			return sliceBuffer(bufferOut, 0, byteLength);
 		},
 		
 		clearReadState: function() {
