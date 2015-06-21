@@ -6,13 +6,64 @@
    * @type {AudioContext}
    */
   var SharedAudioContext = null;
+  var SharedAudioContextRequestCallbacks = null;
 
-  function createAudioContext() {
-    var ac = window.AudioContext || window.webkitAudioContext;
-    if (!ac) {
+  var AC_INITIALIZATION_TIMEOUT = 600;
+  var AC_INITIALIZATION_INTERVAL = 50;
+
+  /**
+   * @param {function(AudioContext)} callback
+   */
+  function obtainSharedAudioContext(callback) {
+    if (SharedAudioContext) {
+      callback(SharedAudioContext);
+      return;
+
+    } else if (SharedAudioContextRequestCallbacks !== null) {
+      SharedAudioContextRequestCallbacks.push(callback);
+      return;
+    }
+
+    SharedAudioContextRequestCallbacks = [callback];
+
+    var acConstructor = window.AudioContext || window.webkitAudioContext;
+    if (!acConstructor) {
       throw new Error('Audio Web API not available');
     }
-    return new ac();
+
+    var ac = new acConstructor();
+
+    // need some API call to get things moving inside AudioContext
+    ac.createGainNode();
+
+    // now poll periodically to catch initialization completion;
+    var timePassed = 0;
+
+    function complete() {
+      SharedAudioContext = ac;
+      var callbacks = SharedAudioContextRequestCallbacks;
+      SharedAudioContextRequestCallbacks = null;
+
+      for (var i = 0; i < callbacks.length; ++i) {
+        callbacks[i](ac);
+      }
+    }
+
+    function pollCompletion() {
+      if (ac.currentTime === 0) {
+        timePassed += AC_INITIALIZATION_INTERVAL;
+        if (timePassed > AC_INITIALIZATION_TIMEOUT) {
+          console.log('failed to initialize Web Audio context');
+        } else {
+          setTimeout(pollCompletion, AC_INITIALIZATION_INTERVAL);
+        }
+
+      } else {
+        complete();
+      }
+    }
+
+    pollCompletion();
   }
 
   function createAudioScriptNode(context, bufferSize, outputChannels) {
@@ -148,19 +199,31 @@
     var muted = false;
 
     /**
+     * Set to true when required asynchronous audio context setup is complete
+     * @type {boolean}
+     */
+    var initialized = false;
+
+    /**
      * Main constructor body
      */
     function init() {
-      var self = this;
+      obtainSharedAudioContext(function(context) {
+        audioContext = context;
+        completeInitialization();
+      });
+    }
 
-      audioContext = SharedAudioContext;
-      if (!audioContext) {
-        audioContext = SharedAudioContext = createAudioContext();
-      }
+    function completeInitialization() {
       outputSampleRate = audioContext.sampleRate;
-
       outputChannels = 2;
       audioNode = createAudioScriptNode(audioContext, bufferSize, outputChannels);
+
+      initialized = true;
+
+      if (started) {
+        doStart();
+      }
     }
 
     /**
@@ -252,17 +315,21 @@
       }
     }
 
+    function doStart() {
+      if (started && initialized) {
+        audioNode.onaudioprocess = audioCycleHandler;
+        audioNode.connect(audioContext.destination);
+        playbackTimeAtBufferHead = audioContext.currentTime;
+      }
+    }
+
     /**
      * Start or resume audio playback
      */
     this.start = function() {
       if (!started) {
-        audioNode.onaudioprocess = audioCycleHandler;
-        audioNode.connect(audioContext.destination);
-
-        playbackTimeAtBufferHead = audioContext.currentTime;
-
         started = true;
+        doStart();
       }
     };
 
@@ -271,8 +338,10 @@
      */
     this.stop = function() {
       if (started) {
-        audioNode.onaudioprocess = null;
-        audioNode.disconnect();
+        if (initialized) {
+          audioNode.onaudioprocess = null;
+          audioNode.disconnect();
+        }
         started = false;
       }
     };
@@ -288,16 +357,21 @@
      * @see AudioFeeder.getPlaybackState
      */
     this.getPlaybackState = function() {
-      var playbackPosition = 0,
-          bufferedDuration = 0;
+      var playbackPosition,
+          bufferedDuration;
 
-      playbackPosition = audioContext.currentTime -
+      var contextTime = 0;
+      if (audioContext) {
+        contextTime = audioContext.currentTime;
+      }
+
+      playbackPosition = contextTime -
         (starvedCycles * bufferSize / (outputSampleRate || 44100)) -
         lostDuration;
 
-      var durationBeforeNextCycle = Math.max(0,
-        playbackTimeAtBufferHead - audioContext.currentTime);
-      bufferedDuration = durationBeforeNextCycle;
+      bufferedDuration = Math.max(
+          0, playbackTimeAtBufferHead - contextTime
+      );
 
       return {
         playbackPosition: playbackPosition,
