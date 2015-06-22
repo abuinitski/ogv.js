@@ -9,7 +9,7 @@
       buffer[channel] = [];
     }
     return buffer;
-  };
+  }
 
   window.AudioFeeder = function() {
     var initialized = false;
@@ -61,17 +61,19 @@
           engineWasStarted = engine.started;
 
       if (engineIsDummy && webEngineAvailable) {
-        var oldTimestamp = engine.getPlaybackState().playbackPosition;
+        AudioFeeder.Web.prepare(function() {
+          var oldTimestamp = engine.getPlaybackState().playbackPosition;
 
-        engine.stop();
-        engine = new AudioFeeder.Web(inputChannels, inputSampleRate, onEngineDataRequest);
-        var newTimestamp = engine.getPlaybackState().playbackPosition;
+          engine.stop();
+          engine = new AudioFeeder.Web(inputChannels, inputSampleRate, onEngineDataRequest);
+          var newTimestamp = engine.getPlaybackState().playbackPosition;
 
-        engineTimestampCorrection += (oldTimestamp - newTimestamp);
+          engineTimestampCorrection += (oldTimestamp - newTimestamp);
 
-        if (engineWasStarted) {
-          engine.start();
-        }
+          if (engineWasStarted) {
+            engine.start();
+          }
+        });
       }
     }
 
@@ -126,12 +128,12 @@
     };
 
     /**
-		 * @return {
-		 *   playbackPosition: {number} context-based playback timestamp in seconds
-		 *   bufferedDuration: {number} buffered data size in seconds
-		 *   starvedCycles: {number} a number of input buffers we had to wait while starving
-		 * }
-		 */
+     * @return {
+     *   playbackPosition: {number} context-based playback timestamp in seconds
+     *   bufferedDuration: {number} buffered data size in seconds
+     *   starvedCycles: {number} a number of input buffers we had to wait while starving
+     * }
+     */
     this.getPlaybackState = function() {
       var state;
       if (engine) {
@@ -157,6 +159,11 @@
     this.start = function() {
       if (!initialized) {
         throw new Error('AudioFeeder should be initialized before start')
+      }
+
+      if (engine && engine.dead) {
+        engine.stop();
+        engine = null;
       }
 
       if (!engine) {

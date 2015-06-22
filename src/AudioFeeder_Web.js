@@ -1,30 +1,76 @@
 (function() {
+  var AC_INITIALIZATION_TIMEOUT = 600;
+  var AC_INITIALIZATION_INTERVAL = 50;
+  var AC_WATCHDOG_INTERVAL = 250;
 
   /**
    * A number of audio contexts is limited, and there is no way to dispose them.
    * So, use just one and share it among all audio feeder instances.
    * @type {AudioContext}
    */
-  var SharedAudioContext = null;
-  var SharedAudioContextRequestCallbacks = null;
-
-  var AC_INITIALIZATION_TIMEOUT = 600;
-  var AC_INITIALIZATION_INTERVAL = 50;
+  var CurrentAudioContext = null;
 
   /**
-   * @param {function(AudioContext)} callback
+   * When audio context is initializing,
+   * this array is not null, and new requests are stacked there,
+   * so only one initialization is active at the same time.
+   * @type {Array}
+   */
+  var AudioContextRequests = null;
+
+  /**
+   * On iOS, AudioContext can be killed by user enabling background music.
+   * So, keep a watchdog to monitor those cases.
+   *
+   * To gracefully handle dead audio contexts, make sure player is paused
+   * during this unfortunate event (AudioFeeder will then detect it's dead
+   * and re-create Web engine).
+   *
+   * Even better, make sure player is also muted, that way AudioFeeder will
+   * restart with Dummy engine, and at least not stop the video if Web engine
+   * fails to initialize.
+   */
+  function startAudioContextWatchdog() {
+    var lastContextTime = null;
+
+    setInterval(function() {
+      if (CurrentAudioContext) {
+        var currentContextTime = CurrentAudioContext.currentTime;
+
+        if (lastContextTime == null) {
+          // init
+          lastContextTime = currentContextTime;
+
+        } else if (currentContextTime !== lastContextTime) {
+          // alive
+          lastContextTime = currentContextTime;
+
+        } else {
+          // dead
+          CurrentAudioContext = null;
+          lastContextTime = null;
+        }
+      }
+    }, AC_WATCHDOG_INTERVAL);
+  }
+  startAudioContextWatchdog();
+
+  /**
+   * Make sure AudioContext is properly prepared before it can
+   * really be functional.
+   * @param {function()} callback
    */
   function obtainSharedAudioContext(callback) {
-    if (SharedAudioContext) {
-      callback(SharedAudioContext);
+    if (CurrentAudioContext) {
+      callback();
       return;
 
-    } else if (SharedAudioContextRequestCallbacks !== null) {
-      SharedAudioContextRequestCallbacks.push(callback);
+    } else if (AudioContextRequests !== null) {
+      AudioContextRequests.push(callback);
       return;
     }
 
-    SharedAudioContextRequestCallbacks = [callback];
+    AudioContextRequests = [callback];
 
     var acConstructor = window.AudioContext || window.webkitAudioContext;
     if (!acConstructor) {
@@ -40,20 +86,23 @@
     var timePassed = 0;
 
     function complete() {
-      SharedAudioContext = ac;
-      var callbacks = SharedAudioContextRequestCallbacks;
-      SharedAudioContextRequestCallbacks = null;
+      CurrentAudioContext = ac;
+      var callbacks = AudioContextRequests;
+      AudioContextRequests = null;
 
       for (var i = 0; i < callbacks.length; ++i) {
-        callbacks[i](ac);
+        callbacks[i]();
       }
     }
 
     function pollCompletion() {
       if (ac.currentTime === 0) {
         timePassed += AC_INITIALIZATION_INTERVAL;
+
         if (timePassed > AC_INITIALIZATION_TIMEOUT) {
           console.log('failed to initialize Web Audio context');
+          AudioContextRequests = null;
+
         } else {
           setTimeout(pollCompletion, AC_INITIALIZATION_INTERVAL);
         }
@@ -135,19 +184,14 @@
 
   /**
    * AudioFeeder engine which uses Web Audio API
-   * @param {function} dataCallback a callback to request data from
-   * @param {number} inputchannels
+   * @param {function} dataRequestCallback a callback to request data from
+   * @param {number} inputChannels
    * @param {number} inputSampleRate
    * @constructor
    */
   window.AudioFeeder.Web = function(inputChannels, inputSampleRate, dataRequestCallback) {
     /**
-     * @type {AudioContext}
-     */
-    var audioContext = null;
-
-    /**
-     * @type {ScriptProcessorNode}
+     * @type {ScriptProcessorNode|JavaScriptNode}
      */
     var audioNode = null;
 
@@ -199,30 +243,46 @@
     var muted = false;
 
     /**
-     * Set to true when required asynchronous audio context setup is complete
-     * @type {boolean}
+     * A number of seconds at which AudioContext starts when assigned to this
+     * feeder engine. Needed to fix cases when AudioContext was initializing longer
+     * and feeder reported a few zero timestamps to the player.
+     * @type {number}
      */
-    var initialized = false;
+    var audioContextTimeCorrection = 0;
 
     /**
      * Main constructor body
      */
     function init() {
-      obtainSharedAudioContext(function(context) {
-        audioContext = context;
-        completeInitialization();
-      });
+      obtainSharedAudioContext(completeInitialization);
     }
 
     function completeInitialization() {
-      outputSampleRate = audioContext.sampleRate;
-      outputChannels = 2;
-      audioNode = createAudioScriptNode(audioContext, bufferSize, outputChannels);
+      if (CurrentAudioContext) {
+        outputSampleRate = CurrentAudioContext.sampleRate;
+        outputChannels = 2;
+        audioNode = createAudioScriptNode(CurrentAudioContext, bufferSize, outputChannels);
 
-      initialized = true;
+        if (started) {
+          doStart();
+        }
+      }
+    }
 
-      if (started) {
-        doStart();
+    /**
+     * AudioContext.currentTime with necessary corrections for
+     * time wasted during initialization.
+     * @param {number} [timestamp]
+     */
+    function getContextTime(timestamp) {
+      if (CurrentAudioContext) {
+        if (timestamp === undefined) {
+          return CurrentAudioContext.currentTime - audioContextTimeCorrection;
+        } else {
+          return timestamp - audioContextTimeCorrection;
+        }
+      } else {
+        return 0;
       }
     }
 
@@ -235,26 +295,26 @@
        * Checks event timestamp against feeder clock
        */
       function syncClock() {
-        var currentPlaybackTime;
+        var eventPlaybackTime;
 
         if (typeof event.playbackTime === 'number') {
-          currentPlaybackTime = event.playbackTime;
+          eventPlaybackTime = getContextTime(event.playbackTime);
 
         } else if (typeof event.timeStamp === 'number') {
-          currentPlaybackTime = (event.timeStamp - Date.now()) / 1000 + audioContext.currentTime;
+          eventPlaybackTime = (event.timeStamp - Date.now()) / 1000 + getContextTime();
 
         } else {
           console.log(new Error('Unrecognized AudioProgressEvent format, no playbackTime or timeStamp'));
-          currentPlaybackTime = audioContext.currentTime;
+          eventPlaybackTime = getContextTime();
         }
 
         var expectedPlaybackTime =
           playbackTimeAtBufferHead + (bufferSize / outputSampleRate);
-        if (expectedPlaybackTime < currentPlaybackTime) {
-          lostDuration += (currentPlaybackTime - expectedPlaybackTime);
+        if (expectedPlaybackTime < eventPlaybackTime) {
+          lostDuration += (eventPlaybackTime - expectedPlaybackTime);
         }
 
-        playbackTimeAtBufferHead = currentPlaybackTime;
+        playbackTimeAtBufferHead = eventPlaybackTime;
       }
 
       function inputSamplesCountForOutputBufferSize() {
@@ -316,10 +376,11 @@
     }
 
     function doStart() {
-      if (started && initialized) {
+      if (started && audioNode && CurrentAudioContext) {
+        audioContextTimeCorrection = CurrentAudioContext.currentTime;
         audioNode.onaudioprocess = audioCycleHandler;
-        audioNode.connect(audioContext.destination);
-        playbackTimeAtBufferHead = audioContext.currentTime;
+        audioNode.connect(CurrentAudioContext.destination);
+        playbackTimeAtBufferHead = getContextTime();
       }
     }
 
@@ -333,12 +394,12 @@
       }
     };
 
-    /*
+    /**
      * Pause audio playback
      */
     this.stop = function() {
       if (started) {
-        if (initialized) {
+        if (audioNode) {
           audioNode.onaudioprocess = null;
           audioNode.disconnect();
         }
@@ -360,10 +421,7 @@
       var playbackPosition,
           bufferedDuration;
 
-      var contextTime = 0;
-      if (audioContext) {
-        contextTime = audioContext.currentTime;
-      }
+      var contextTime = getContextTime();
 
       playbackPosition = contextTime -
         (starvedCycles * bufferSize / (outputSampleRate || 44100)) -
@@ -379,6 +437,12 @@
         starvedCycles: starvedCycles
       };
     };
+
+    Object.defineProperty(this, 'dead', {
+      get: function() {
+        return !CurrentAudioContext;
+      }
+    });
 
     Object.defineProperty(this, 'muted', {
       get: function() {
@@ -409,5 +473,14 @@
    */
   window.AudioFeeder.Web.isAvailable = function() {
     return !!(window.AudioContext || window.webkitAudioContext);
+  };
+
+  /**
+   * Wait for web api to be properly prepared before
+   * it can be functional.
+   * @param {function()} callback
+   */
+  window.AudioFeeder.Web.prepare = function(callback) {
+    obtainSharedAudioContext(callback);
   };
 })();

@@ -78,6 +78,11 @@
 
     this.muted = false;
 
+    Object.defineProperty(this, 'dead', {
+      value: false,
+      writable: false
+    });
+
     Object.defineProperty(this, 'preferredBufferDuration', {
       value: 0.02,
       writable: false
