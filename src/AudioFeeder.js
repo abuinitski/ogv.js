@@ -42,7 +42,7 @@
      *  simulating samples consumption until sound is enabled, hopefully as a
      *  result of a tap somewhere.
      *
-     * @type {AudioFeeder.Web|AudioFeeder.Dummy|null}
+     * @type {AudioFeeder.Web|AudioFeeder.Dummy|AudioFeeder.Html5|null}
      */
     var engine = null;
 
@@ -167,7 +167,9 @@
       }
 
       if (!engine) {
-        if (muted) {
+        if (this.audioTrackSrc) {
+          engine = new AudioFeeder.Html5(this.audioTrackSrc, onEngineDataRequest);
+        } else if (muted) {
           // don't run into AudioContext if initializing muted, see iOS notes above
           engine = new AudioFeeder.Dummy(inputChannels, inputSampleRate, onEngineDataRequest);
         } else if (AudioFeeder.Web.isAvailable()) {

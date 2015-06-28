@@ -16,6 +16,9 @@
 // -- AudioFeeder_Dummy.js
 #include "AudioFeeder_Dummy.js"
 
+// -- AudioFeeder_Html5.js
+#include "AudioFeeder_Html5.js"
+
 // -- FrameSink.js
 #include "FrameSink.js"
 
