@@ -121,6 +121,7 @@
      */
     window.AudioFeeder.Html5 = function(audioTrackSrc, dataRequestCallback) {
         var started = false;
+        var prepared = false;
         var muted = false;
 
         var audioTime = new AudioTime();
@@ -140,6 +141,13 @@
             audio.addEventListener('waiting', function() {
                 audioTime.stalled = true;
             });
+            audio.addEventListener('durationchange', function() {
+                if (audio.duration > 1) {
+                    prepared = true;
+                    updateAudioState();
+                }
+            });
+            audio.load();
             return audio;
         })();
         var audioOn = false;
@@ -147,21 +155,21 @@
         var audioDataConsumeTimestamp = 0;
 
         function updateAudioState() {
-            var audioShouldOn = (started && !muted);
+            var audioShouldOn = (started && prepared && !muted);
 
             if (audioOn != audioShouldOn) {
                 audioOn = audioShouldOn;
                 if (audioOn) {
                     audioTime.stalled = true;
-                    audio.currentTime = audioTime.get();
                     audio.play();
+                    audio.currentTime = audioTime.get();
                 } else {
                     audioTime.stalled = false;
                     audio.pause();
                 }
             }
 
-            audioTime.active = started;
+            audioTime.active = started && prepared;
             audioTime.emulated = muted;
         }
 

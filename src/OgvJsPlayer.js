@@ -214,7 +214,8 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 	var continueVideo = null;
 
 	var lastFrameTime = getTimestamp(),
-		frameEndTimestamp = 0.0;
+		frameEndTimestamp = 0.0,
+	  	lastRenderedFrameTimestamp = 0.0;
 	var lastFrameDecodeTime = 0.0;
 	var targetFrameTime;
 	var lastFrameTimestamp = 0.0;
@@ -234,7 +235,8 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
         if (drop) {
             ++droppedFrames;
         } else {
-            frameSink.drawFrame(buffer);
+			frameSink.drawFrame(buffer);
+			lastRenderedFrameTimestamp = getTimestamp();
         }
 
 		delta = getTimestamp() - start;
@@ -732,7 +734,9 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 					});
 				}
 				if (codec.frameReady && readyForFrame) {
-                    var drop = self.enableFrameDrop && frameDelay < -targetPerFrameTime;
+                    var drop = self.enableFrameDrop &&
+					  			frameDelay < -targetPerFrameTime &&
+					  			(getTimestamp() - lastRenderedFrameTimestamp < 1000);
 
                     var start = getTimestamp();
                     var ok = codec.decodeFrame(function(buffer) {
@@ -795,11 +799,12 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 
 					// it's time to draw
 					var start = getTimestamp();
+					var drop = self.enableFrameDrop && (start - targetFrameTime > targetPerFrameTime);
 					var ok = codec.decodeFrame(function(buffer) {
 						var delta = (getTimestamp() - start);
 						lastFrameDecodeTime += delta;
 						videoDecodingTime += delta;
-						drawFrame(buffer);
+						drawFrame(buffer, drop);
 						targetFrameTime += 1000.0 / fps;
 						pingProcessing(0);
 					});
