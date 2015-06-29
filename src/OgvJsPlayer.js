@@ -735,8 +735,10 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 				}
 				if (codec.frameReady && readyForFrame) {
                     var drop = self.enableFrameDrop &&
-					  			frameDelay < -targetPerFrameTime &&
-					  			(getTimestamp() - lastRenderedFrameTimestamp < 1000);
+					  			frameDelay < -targetPerFrameTime;
+					if (drop && self.frameDropInterval) {
+						drop = getTimestamp() - lastRenderedFrameTimestamp < self.frameDropInterval;
+					}
 
                     var start = getTimestamp();
                     var ok = codec.decodeFrame(function(buffer) {
