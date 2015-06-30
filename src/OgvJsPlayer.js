@@ -519,6 +519,10 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 			audioState = null,
 			audioPlaybackPosition = 0;
 
+		if (!codec) {
+			return;
+		}
+
 		var n = 0;
 		while (true) {
 			n++;
@@ -705,6 +709,10 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 			}
 
 			if (hasAudio() && audioFeeder) {
+				if (paused) {
+					return;
+				}
+
 				if (!audioState) {
 					audioState = audioFeeder.getPlaybackState();
 					audioPlaybackPosition = getAudioTime(audioState);
@@ -719,6 +727,13 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 					readyForAudio = audioBufferedDuration <= preferredBufferDuration,
 					frameDelay = (frameEndTimestamp - audioPlaybackPosition) * 1000,
 					readyForFrame = (frameDelay <= fudgeDelta);
+
+				var videoBehind = audioPlaybackPosition - frameEndTimestamp;
+				if (audioFeeder.suspended) {
+					audioFeeder.suspended = videoBehind > 0;
+				} else {
+					audioFeeder.suspended = videoBehind > 1.0;
+				}
 
 				var startTimeSpent = getTimestamp();
 				if (codec.audioReady && readyForAudio) {
@@ -750,7 +765,7 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
                     });
                     if (!ok) {
                         // Bad packet or something.
-                        console.log('Bad video packet or something');
+                        //console.log('Bad video packet or something');
                     }
 				}
 
@@ -811,7 +826,7 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 						pingProcessing(0);
 					});
 					if (!ok) {
-						console.log('Bad video packet or something');
+						//console.log('Bad video packet or something');
 						pingProcessing(Math.max(0, targetFrameTime - getTimestamp()));
 					}
 				} else {

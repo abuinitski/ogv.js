@@ -18,6 +18,7 @@
     var inputSampleRate = null;
 
     var muted = false;
+    var suspended = false;
 
     /**
      * A storage for waiting-to-play input data, not resampled yet.
@@ -178,6 +179,7 @@
           engine = new AudioFeeder.Dummy(inputChannels, inputSampleRate, onEngineDataRequest);
         }
         engine.muted = muted;
+        engine.suspended = suspended;
       }
 
       engine.start();
@@ -222,6 +224,21 @@
           }
 
           muted = newMuted;
+        }
+      }
+    });
+
+    Object.defineProperty(this, 'suspended', {
+      get: function() {
+        return suspended;
+      },
+      set: function(value) {
+        value = !!value;
+        if (value !== suspended) {
+          suspended = value;
+          if (engine) {
+            engine.suspended = suspended;
+          }
         }
       }
     });

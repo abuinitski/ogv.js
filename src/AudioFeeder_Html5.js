@@ -12,6 +12,9 @@
         };
     })();
 
+    var sharedAudio = null;
+    var sharedAudioListeners = {};
+
     /**
      * An abstraction to manage audio time calculation
      * @constructor
@@ -61,17 +64,19 @@
         };
 
         this.sync = function(reportedTime) {
-            var now = timestamp();
-            var computedTime = computeAudioTime(now);
-            var threshold = computedTime - reportedTime;
+            if (active) {
+                var now = timestamp();
+                var computedTime = computeAudioTime(now);
+                var threshold = computedTime - reportedTime;
 
-            if (Math.abs(threshold) > SYNC_AUDIO_THRESHOLD) {
-                fixAudioTime(reportedTime, now);
-            } else {
-                fixAudioTime(computedTime, now);
+                if (Math.abs(threshold) > SYNC_AUDIO_THRESHOLD) {
+                    fixAudioTime(reportedTime, now);
+                } else {
+                    fixAudioTime(computedTime, now);
+                }
+
+                stalled = false;
             }
-
-            stalled = false;
         };
 
         Object.defineProperty(this, 'active', {
@@ -121,55 +126,105 @@
      */
     window.AudioFeeder.Html5 = function(audioTrackSrc, dataRequestCallback) {
         var started = false;
-        var prepared = false;
         var muted = false;
+        var suspended = false;
 
         var audioTime = new AudioTime();
 
-        var audio = (function() {
-            var audio = document.createElement('audio');
-            audio.src = audioTrackSrc;
-            audio.addEventListener('timeupdate', function() {
-                audioTime.sync(audio.currentTime);
-            });
-            audio.addEventListener('ended', function() {
-                started = false;
-            });
-            audio.addEventListener('stalled', function() {
-                audioTime.stalled = true;
-            });
-            audio.addEventListener('waiting', function() {
-                audioTime.stalled = true;
-            });
-            audio.addEventListener('durationchange', function() {
-                if (audio.duration > 1) {
-                    prepared = true;
-                    updateAudioState();
-                }
-            });
-            audio.load();
-            return audio;
-        })();
+        var audio = null;
         var audioOn = false;
+        var audioPrepared = false;
+
+        function createAudio() {
+            if (!sharedAudio) {
+                sharedAudio = document.createElement('audio');
+
+            } else {
+                if (sharedAudio.src !== audioTrackSrc) {
+                    sharedAudio.src = '';
+                    sharedAudio.load();
+                }
+
+                sharedAudio.removeEventListener('timeupdate', sharedAudioListeners.timeupdate);
+                sharedAudio.removeEventListener('ended', sharedAudioListeners.ended);
+                sharedAudio.removeEventListener('stalled', sharedAudioListeners.stalled);
+                sharedAudio.removeEventListener('waiting', sharedAudioListeners.waiting);
+            }
+
+            var audio = sharedAudio;
+            if (sharedAudio.src !== audioTrackSrc) {
+                audio.src = audioTrackSrc;
+            }
+
+            sharedAudioListeners = {
+                timeupdate: function() {
+                    audioTime.sync(audio.currentTime);
+                },
+                ended: function() {
+                    started = false;
+                    updateAudioState();
+                },
+                stalled: function() {
+                    if (audioOn) {
+                        audio.pause();
+                        audioOn = false;
+                        updateAudioState();
+                    }
+                },
+                waiting: function() {
+                    audioTime.stalled = true;
+                }
+            };
+            audio.addEventListener('timeupdate', sharedAudioListeners.timeupdate);
+            audio.addEventListener('ended', sharedAudioListeners.ended);
+            audio.addEventListener('stalled', sharedAudioListeners.stalled);
+            audio.addEventListener('waiting', sharedAudioListeners.waiting);
+
+            return audio;
+        }
 
         var audioDataConsumeTimestamp = 0;
 
         function updateAudioState() {
-            var audioShouldOn = (started && prepared && !muted);
+            var audioShouldOn = (started && !suspended && !muted);
 
             if (audioOn != audioShouldOn) {
                 audioOn = audioShouldOn;
+
                 if (audioOn) {
                     audioTime.stalled = true;
+
+                    if (audio === null) {
+                        audio = createAudio();
+                    }
+
+                    var seekTime = audioTime.get();
+                    if (seekTime > 0) {
+                        if (audioPrepared) {
+                            audio.currentTime = seekTime;
+
+                        } else {
+                            audio.addEventListener('durationchange', function(e) {
+                                if (audio.duration > 1) {
+                                    e.target.removeEventListener(e.type, arguments.callee);
+                                    audioPrepared = true;
+                                    audio.currentTime = seekTime;
+                                }
+                            });
+                        }
+                    }
+
                     audio.play();
-                    audio.currentTime = audioTime.get();
+
                 } else {
                     audioTime.stalled = false;
-                    audio.pause();
+                    if (!audio.ended) {
+                        audio.pause();
+                    }
                 }
             }
 
-            audioTime.active = started && prepared;
+            audioTime.active = started && !suspended;
             audioTime.emulated = muted;
         }
 
@@ -190,6 +245,7 @@
         this.start = function() {
             if (!started) {
                 started = true;
+                suspended = false;
                 updateAudioState();
             }
         };
@@ -212,6 +268,10 @@
                 bufferedDuration: 0.04,
                 starvedCycles: 0
             };
+        };
+
+        this.resetDataRequestCallback = function(callback) {
+            dataRequestCallback = callback;
         };
 
         Object.defineProperty(this, 'muted', {
@@ -240,6 +300,25 @@
         Object.defineProperty(this, 'started', {
             get: function() {
                 return started;
+            }
+        });
+
+        Object.defineProperty(this, 'suspended', {
+            get: function() {
+                return suspended;
+            },
+            set: function(value) {
+                value = !!value;
+                if (suspended !== value) {
+                    suspended = value;
+                    updateAudioState();
+                }
+            }
+        });
+
+        Object.defineProperty(this, 'src', {
+            get: function() {
+                return audioTrackSrc;
             }
         });
     };
