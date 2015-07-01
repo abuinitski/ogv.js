@@ -169,7 +169,14 @@
 
       if (!engine) {
         if (this.audioTrackSrc) {
-          engine = new AudioFeeder.Html5(this.audioTrackSrc, onEngineDataRequest);
+          engine = new AudioFeeder.Html5(this.audioTrackSrc, this.audioTrackTitle || '', onEngineDataRequest);
+          engine.onheartbeat = (function(me) {
+            return function() {
+              if (me.onheartbeat) {
+                me.onheartbeat();
+              }
+            }
+          })(this);
         } else if (muted) {
           // don't run into AudioContext if initializing muted, see iOS notes above
           engine = new AudioFeeder.Dummy(inputChannels, inputSampleRate, onEngineDataRequest);

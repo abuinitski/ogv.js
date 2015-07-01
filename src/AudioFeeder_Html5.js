@@ -124,7 +124,7 @@
      * from a separate URL.
      * @constructor
      */
-    window.AudioFeeder.Html5 = function(audioTrackSrc, dataRequestCallback) {
+    window.AudioFeeder.Html5 = function(audioTrackSrc, audioTitle, dataRequestCallback) {
         var started = false;
         var muted = false;
         var suspended = false;
@@ -134,6 +134,14 @@
         var audio = null;
         var audioOn = false;
         var audioPrepared = false;
+
+        var heartbeat = (function(me) {
+            return function() {
+                if (me.onheartbeat) {
+                    me.onheartbeat();
+                }
+            }
+        })(this);
 
         function createAudio() {
             if (!sharedAudio) {
@@ -156,13 +164,17 @@
                 audio.src = audioTrackSrc;
             }
 
+            audio.setAttribute('title', audioTitle);
+
             sharedAudioListeners = {
                 timeupdate: function() {
                     audioTime.sync(audio.currentTime);
+                    heartbeat();
                 },
                 ended: function() {
                     started = false;
                     updateAudioState();
+                    heartbeat();
                 },
                 stalled: function() {
                     if (audioOn) {
@@ -170,9 +182,11 @@
                         audioOn = false;
                         updateAudioState();
                     }
+                    heartbeat();
                 },
                 waiting: function() {
                     audioTime.stalled = true;
+                    heartbeat();
                 }
             };
             audio.addEventListener('timeupdate', sharedAudioListeners.timeupdate);
@@ -241,6 +255,8 @@
                 setTimeout(consumeAudioData, 0);
             }
         }
+
+        this.onheartbeat = null;
 
         this.start = function() {
             if (!started) {

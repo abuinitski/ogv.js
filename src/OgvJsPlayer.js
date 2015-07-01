@@ -93,20 +93,29 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 	}
 
 	var audioTrackSrc = null;
+	var audioTrackTitle = null;
 	var placeboCodec, codec, audioFeeder;
 	var muted = false,
 		initialAudioPosition = 0.0,
 		initialAudioOffset = 0.0;
 
+	function heartbeat() {
+		if (self.onheartbeat) {
+			self.onheartbeat();
+		}
+	}
+
 	function initAudioFeeder() {
 		audioFeeder = new AudioFeeder( audioOptions );
 		audioFeeder.muted = muted;
 		audioFeeder.audioTrackSrc = audioTrackSrc;
+		audioFeeder.audioTrackTitle = audioTrackTitle;
 		audioFeeder.onstarved = function() {
 			// If we're in a background tab, timers may be throttled.
 			// When audio buffers run out, go decode some more stuff.
 			pingProcessing();
 		};
+		audioFeeder.onheartbeat = heartbeat;
 
 		if (audioInfo) {
 			audioFeeder.init(audioInfo.channelCount, audioInfo.sampleRate);
@@ -269,6 +278,7 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 				clockTime: wallClockTime
 			});
 		}
+		heartbeat();
 		lastFrameDecodeTime = 0;
 		lastFrameTimestamp = newFrameTimestamp;
 	}
@@ -1069,6 +1079,7 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 		}
 
 		audioTrackSrc = self.audioTrackSrc;
+		audioTrackTitle = self.audioTrackTitle;
 
 		if (paused) {
 			startedPlaybackInDocument = document.body.contains(self);
@@ -1386,6 +1397,8 @@ OgvJsPlayer = window.OgvJsPlayer = function(options) {
 	 * custom onframecallback, takes frame decode time in ms
 	 */
 	self.onframecallback = null;
+
+	self.onheartbeat = null;
 
 	/**
 	 * Called when all metadata is available.
